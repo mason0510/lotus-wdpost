@@ -58,6 +58,9 @@ type Miner struct {
 	sealingEvtType journal.EventType
 
 	journal journal.Journal
+
+	wdpostChecker chan uint64
+	wdpostResult  chan func() ([]miner.SubmitWindowedPoStParams, error)
 }
 
 // SealingStateEvt is a journal event that records a sector state transition.
@@ -182,6 +185,19 @@ func (m *Miner) handleSealingNotifications(before, after sealing.SectorInfo) {
 
 func (m *Miner) Stop(ctx context.Context) error {
 	return m.sealing.Stop(ctx)
+}
+
+func (m *Miner) CheckWindowPoStListener(ctx context.Context) (chan uint64, chan func() ([]miner.SubmitWindowedPoStParams, error)) {
+	return m.wdpostChecker, m.wdpostResult
+}
+
+func (m *Miner) CheckWindowPoSt(ctx context.Context, deadline uint64) ([]miner.SubmitWindowedPoStParams, error) {
+	log.Warnf("START CHECK WINDOW POST --- %v", deadline)
+	m.wdpostChecker <- deadline
+	log.Warnf("WAIT CHECK WINDOW POST --- %v", deadline)
+	posts, err := (<-m.wdpostResult)()
+	log.Warnf("FINISH CHECK WINDOW POST --- %v", deadline)
+	return posts, err
 }
 
 func (m *Miner) runPreflightChecks(ctx context.Context) error {

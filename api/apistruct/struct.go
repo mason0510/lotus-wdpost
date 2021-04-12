@@ -323,6 +323,8 @@ type StorageMinerStruct struct {
 		SectorTerminatePending        func(ctx context.Context) ([]abi.SectorID, error)                                             `perm:"admin"`
 		SectorMarkForUpgrade          func(ctx context.Context, id abi.SectorNumber) error                                          `perm:"admin"`
 
+		CheckWindowPoSt      func(ctx context.Context, deadline uint64) ([]miner.SubmitWindowedPoStParams, error) `perm:"admin"`
+
 		WorkerConnect func(context.Context, string) error                                `perm:"admin" retry:"true"` // TODO: worker perm
 		WorkerStats   func(context.Context) (map[uuid.UUID]storiface.WorkerStats, error) `perm:"admin"`
 		WorkerJobs    func(context.Context) (map[uuid.UUID][]storiface.WorkerJob, error) `perm:"admin"`
@@ -1346,6 +1348,10 @@ func (c *StorageMinerStruct) SectorTerminatePending(ctx context.Context) ([]abi.
 
 func (c *StorageMinerStruct) SectorMarkForUpgrade(ctx context.Context, number abi.SectorNumber) error {
 	return c.Internal.SectorMarkForUpgrade(ctx, number)
+}
+
+func (c *StorageMinerStruct) CheckWindowPoSt(ctx context.Context, deadline uint64) ([]miner.SubmitWindowedPoStParams, error) {
+	return c.Internal.CheckWindowPoSt(ctx, deadline)
 }
 
 func (c *StorageMinerStruct) WorkerConnect(ctx context.Context, url string) error {

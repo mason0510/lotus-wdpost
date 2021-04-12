@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"time"
 
 	"github.com/filecoin-project/go-bitfield"
@@ -414,6 +415,13 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 	ctx, span := trace.StartSpan(ctx, "storage.runPost")
 	defer span.End()
 
+	tipsetHeight := abi.ChainEpoch(0)
+	tipsetKey := types.EmptyTSK
+	if ts != nil {
+		tipsetKey = ts.Key()
+		tipsetHeight = ts.Height()
+	}
+
 	go func() {
 		// TODO: extract from runPost, run on fault cutoff boundaries
 
@@ -421,7 +429,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 		// late to declare them for this deadline
 		declDeadline := (di.Index + 2) % di.WPoStPeriodDeadlines
 
-		partitions, err := s.api.StateMinerPartitions(context.TODO(), s.actor, declDeadline, ts.Key())
+		partitions, err := s.api.StateMinerPartitions(context.TODO(), s.actor, declDeadline, tipsetKey)
 		if err != nil {
 			log.Errorf("getting partitions: %v", err)
 			return
@@ -443,7 +451,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 			}
 		)
 
-		if recoveries, sigmsg, err = s.checkNextRecoveries(context.TODO(), declDeadline, partitions, ts.Key()); err != nil {
+		if recoveries, sigmsg, err = s.checkNextRecoveries(context.TODO(), declDeadline, partitions, tipsetKey); err != nil {
 			// TODO: This is potentially quite bad, but not even trying to post when this fails is objectively worse
 			log.Errorf("checking sector recoveries: %v", err)
 		}
@@ -458,11 +466,13 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 			return j
 		})
 
-		if ts.Height() > build.UpgradeIgnitionHeight {
-			return // FORK: declaring faults after ignition upgrade makes no sense
+		if ts != nil {
+			if ts.Height() > build.UpgradeIgnitionHeight {
+				return // FORK: declaring faults after ignition upgrade makes no sense
+			}
 		}
 
-		if faults, sigmsg, err = s.checkNextFaults(context.TODO(), declDeadline, partitions, ts.Key()); err != nil {
+		if faults, sigmsg, err = s.checkNextFaults(context.TODO(), declDeadline, partitions, tipsetKey); err != nil {
 			// TODO: This is also potentially really bad, but we try to post anyways
 			log.Errorf("checking sector faults: %v", err)
 		}
@@ -481,18 +491,28 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 		return nil, xerrors.Errorf("failed to marshal address to cbor: %w", err)
 	}
 
-	headTs, err := s.api.ChainHead(ctx)
-	if err != nil {
-		return nil, xerrors.Errorf("getting current head: %w", err)
+	var randomness abi.Randomness
+	var err error
+
+	if ts != nil {
+		headTs, err := s.api.ChainHead(ctx)
+		if err != nil {
+			return nil, xerrors.Errorf("getting current head: %w", err)
+		}
+		randomness, err = s.api.ChainGetRandomnessFromBeacon(ctx, headTs.Key(), crypto.DomainSeparationTag_WindowedPoStChallengeSeed, di.Challenge, buf.Bytes())
+		if err != nil {
+			return nil, xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", tipsetHeight, di, err)
+		}
+	} else {
+		randomness = make([]byte, abi.RandomnessLength)
+		_, _ = rand.Read(randomness)
+		randomness[31] &= 0x3f
 	}
 
-	rand, err := s.api.ChainGetRandomnessFromBeacon(ctx, headTs.Key(), crypto.DomainSeparationTag_WindowedPoStChallengeSeed, di.Challenge, buf.Bytes())
-	if err != nil {
-		return nil, xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", ts.Height(), di, err)
-	}
+	rand := randomness
 
 	// Get the partitions for the given deadline
-	partitions, err := s.api.StateMinerPartitions(ctx, s.actor, di.Index, ts.Key())
+	partitions, err := s.api.StateMinerPartitions(ctx, s.actor, di.Index, tipsetKey)
 	if err != nil {
 		return nil, xerrors.Errorf("getting partitions: %w", err)
 	}
@@ -528,16 +548,22 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 			var sinfos []proof2.SectorInfo
 			for partIdx, partition := range batch {
 				// TODO: Can do this in parallel
-				toProve, err := bitfield.SubtractBitField(partition.LiveSectors, partition.FaultySectors)
-				if err != nil {
-					return nil, xerrors.Errorf("removing faults from set of sectors to prove: %w", err)
+
+				toProve := partition.LiveSectors
+
+				if ts != nil {
+					toProve, err = bitfield.SubtractBitField(partition.LiveSectors, partition.FaultySectors)
+					if err != nil {
+						return nil, xerrors.Errorf("removing faults from set of sectors to prove: %w", err)
+					}
 				}
+
 				toProve, err = bitfield.MergeBitFields(toProve, partition.RecoveringSectors)
 				if err != nil {
 					return nil, xerrors.Errorf("adding recoveries to set of sectors to prove: %w", err)
 				}
 
-				good, err := s.checkSectors(ctx, toProve, ts.Key())
+				good, err := s.checkSectors(ctx, toProve, tipsetKey)
 				if err != nil {
 					return nil, xerrors.Errorf("checking sectors to skip: %w", err)
 				}
@@ -584,7 +610,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 			log.Infow("running window post",
 				"chain-random", rand,
 				"deadline", di,
-				"height", ts.Height(),
+				"height", tipsetHeight,
 				"skipped", skipCount)
 
 			tsStart := build.Clock.Now()
@@ -612,11 +638,11 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 
 				checkRand, err := s.api.ChainGetRandomnessFromBeacon(ctx, headTs.Key(), crypto.DomainSeparationTag_WindowedPoStChallengeSeed, di.Challenge, buf.Bytes())
 				if err != nil {
-					return nil, xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", ts.Height(), di, err)
+					return nil, xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", tipsetHeight, di, err)
 				}
 
 				if !bytes.Equal(checkRand, rand) {
-					log.Warnw("windowpost randomness changed", "old", rand, "new", checkRand, "ts-height", ts.Height(), "challenge-height", di.Challenge, "tsk", ts.Key())
+					log.Warnw("windowpost randomness changed", "old", rand, "new", checkRand, "ts-height", tipsetHeight, "challenge-height", di.Challenge, "tsk", tipsetKey)
 					continue
 				}
 

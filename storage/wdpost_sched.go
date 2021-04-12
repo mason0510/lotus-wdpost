@@ -13,6 +13,7 @@ import (
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
+	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
@@ -36,8 +37,9 @@ type WindowPoStScheduler struct {
 
 	actor address.Address
 
-	evtTypes [4]journal.EventType
-	journal  journal.Journal
+	evtTypes              [4]journal.EventType
+	journal               journal.Journal
+	wdpostCheckerListener func(context.Context) (chan uint64, chan func() ([]miner.SubmitWindowedPoStParams, error))
 
 	// failed abi.ChainEpoch // eps
 	// failLk sync.Mutex
@@ -70,9 +72,27 @@ func NewWindowedPoStScheduler(api storageMinerApi, fc config.MinerFeeConfig, as 
 	}, nil
 }
 
+func (s *WindowPoStScheduler) SetWindowPoStCheckerListener(listener func(ctx context.Context) (chan uint64, chan func() ([]miner.SubmitWindowedPoStParams, error))) {
+	s.wdpostCheckerListener = listener
+}
+
 type changeHandlerAPIImpl struct {
 	storageMinerApi
 	*WindowPoStScheduler
+}
+
+func (s *WindowPoStScheduler) checkWindowPoSt(ctx context.Context, deadline uint64, wdpostResult chan func() ([]miner.SubmitWindowedPoStParams, error)) {
+	go func() {
+		log.Warnf("CHECKING WINDOW POST ----- %v", deadline)
+		posts, err := s.runPost(ctx, dline.Info{
+			Index:                deadline,
+			WPoStPeriodDeadlines: miner.WPoStPeriodDeadlines,
+		}, nil)
+		log.Warnf("CHECKED WINDOW POST ----- %v", deadline)
+		wdpostResult <- (func() ([]miner.SubmitWindowedPoStParams, error) {
+			return posts, err
+		})
+	}()
 }
 
 func (s *WindowPoStScheduler) Run(ctx context.Context) {
@@ -86,8 +106,16 @@ func (s *WindowPoStScheduler) Run(ctx context.Context) {
 	var err error
 	var gotCur bool
 
+	wdpostChecker, wdpostResult := s.wdpostCheckerListener(ctx)
+
 	// not fine to panic after this point
 	for {
+		select {
+		case index := <-wdpostChecker:
+			s.checkWindowPoSt(ctx, index, wdpostResult)
+		default:
+		}
+
 		if notifs == nil {
 			notifs, err = s.api.ChainNotify(ctx)
 			if err != nil {
