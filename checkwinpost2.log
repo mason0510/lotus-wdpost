@@ -1,0 +1,6 @@
+2021-05-30T15:39:31.967+0800	[31mERROR[0m	rpc	go-jsonrpc@v0.1.4-0.20210217175800-45ea43ac2bec/websocket.go:498	sending ping message: write tcp 127.0.0.1:53503->127.0.0.1:2345: use of closed network connection
+2021-05-30T15:39:31.961+0800	[31mERROR[0m	rpc	go-jsonrpc@v0.1.4-0.20210217175800-45ea43ac2bec/websocket.go:667	Connection timeout	{"remote": "127.0.0.1:2345"}
+2021-05-30T15:39:31.981+0800	[33mWARN[0m	rpc	go-jsonrpc@v0.1.4-0.20210217175800-45ea43ac2bec/websocket.go:678	failed to write close message: write tcp 127.0.0.1:53503->127.0.0.1:2345: use of closed network connection
+2021-05-30T15:39:31.981+0800	[33mWARN[0m	rpc	go-jsonrpc@v0.1.4-0.20210217175800-45ea43ac2bec/websocket.go:681	websocket close error	{"error": "close tcp 127.0.0.1:53503->127.0.0.1:2345: use of closed network connection"}
+ERROR: handler: websocket connection closed
+

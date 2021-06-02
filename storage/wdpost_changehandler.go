@@ -477,7 +477,8 @@ func (s *submitHandler) submitIfReady(ctx context.Context, advance *types.TipSet
 		return
 	}
 
-	// Start submitting post
+	// Start submitting post  禁止提交
+
 	pw.submitState = SubmitStateSubmitting
 	pw.abort = s.api.startSubmitPoST(ctx, advance, pw.di, posts, func(err error) {
 		s.submitResults <- &submitResult{pw: pw, err: err}

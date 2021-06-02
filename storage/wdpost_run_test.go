@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -163,30 +164,40 @@ func (m mockFaultTracker) CheckProvable(ctx context.Context, pp abi.RegisteredPo
 // TestWDPostDoPost verifies that doPost will send the correct number of window
 // PoST messages for a given number of partitions
 func TestWDPostDoPost(t *testing.T) {
+	fmt.Println("TestWDPostDoPost++++++++++++++++++begin")
+	//根据MinerId 获取deadline
 	ctx := context.Background()
 	expectedMsgCount := 5
 
 	proofType := abi.RegisteredPoStProof_StackedDrgWindow2KiBV1
 	postAct := tutils.NewIDAddr(t, 100)
-
+	//fmt.Println("TestWDPostDoPost++++++++++++++++++proofType postAct",proofType,postAct)
 	mockStgMinerAPI := newMockStorageMinerAPI()
 
 	// Get the number of sectors allowed in a partition for this proof type
 	sectorsPerPartition, err := builtin2.PoStProofWindowPoStPartitionSectors(proofType)
+	fmt.Println("proofType")
 	require.NoError(t, err)
+	fmt.Println("TestWDPostDoPost++++++++++++++++++sectorsPerPartition",sectorsPerPartition)
 	// Work out the number of partitions that can be included in a message
 	// without exceeding the message sector limit
 
 	require.NoError(t, err)
+	//扇区消息的最大量 10000
+	fmt.Println("sectorsPerPartition",sectorsPerPartition)
 	partitionsPerMsg := int(miner2.AddressedSectorsMax / sectorsPerPartition)
 
+	//fmt.Println("TestWDPostDoPost++++++++++++++++++partitionsPerMsg",partitionsPerMsg)
 	// Enough partitions to fill expectedMsgCount-1 messages
+	//4*5000(每条消息5000个扇区)=20000
 	partitionCount := (expectedMsgCount - 1) * partitionsPerMsg
 	// Add an extra partition that should be included in the last message
+	fmt.Println("TestWDPostDoPost++++++++++++++++++partitionCount",partitionCount)
 	partitionCount++
 
 	var partitions []api.Partition
 	for p := 0; p < partitionCount; p++ {
+
 		sectors := bitfield.New()
 		for s := uint64(0); s < sectorsPerPartition; s++ {
 			sectors.Set(s)
@@ -200,6 +211,7 @@ func TestWDPostDoPost(t *testing.T) {
 		})
 	}
 	mockStgMinerAPI.setPartitions(partitions)
+	//fmt.Println("TestWDPostDoPost++++++++++++++++++partitions",partitions)
 
 	// Run window PoST
 	scheduler := &WindowPoStScheduler{
@@ -213,6 +225,7 @@ func TestWDPostDoPost(t *testing.T) {
 		addrSel:      &AddressSelector{},
 	}
 
+	fmt.Println("TestWDPostDoPost++++++++++++++++++scheduler",scheduler)
 	di := &dline.Info{
 		WPoStPeriodDeadlines:   miner2.WPoStPeriodDeadlines,
 		WPoStProvingPeriod:     miner2.WPoStProvingPeriod,
@@ -220,14 +233,17 @@ func TestWDPostDoPost(t *testing.T) {
 		WPoStChallengeLookback: miner2.WPoStChallengeLookback,
 		FaultDeclarationCutoff: miner2.FaultDeclarationCutoff,
 	}
+	fmt.Println("TestWDPostDoPost++++++++++++++++++di",di.CurrentEpoch)
 	ts := mockTipSet(t)
 
 	scheduler.startGeneratePoST(ctx, ts, di, func(posts []miner.SubmitWindowedPoStParams, err error) {
 		scheduler.startSubmitPoST(ctx, ts, di, posts, func(err error) {})
 	})
+	fmt.Println("TestWDPostDoPost++++++++++++++++++startGeneratePoST")
 
 	// Read the window PoST messages
 	for i := 0; i < expectedMsgCount; i++ {
+		fmt.Println("TestWDPostDoPost++++++++++++++++++expectedMsgCount",i,expectedMsgCount)
 		msg := <-mockStgMinerAPI.pushedMessages
 		require.Equal(t, miner.Methods.SubmitWindowedPoSt, msg.Method)
 		var params miner.SubmitWindowedPoStParams
@@ -242,16 +258,18 @@ func TestWDPostDoPost(t *testing.T) {
 			require.Len(t, params.Partitions, partitionsPerMsg)
 		}
 	}
+	fmt.Println("TestWDPostDoPost+++++++++++++++++++++++++++++end")
 }
 
 func mockTipSet(t *testing.T) *types.TipSet {
 	minerAct := tutils.NewActorAddr(t, "miner")
 	c, err := cid.Decode("QmbFMke1KXqnYyBBWxB74N4c5SBnJMVAiMNRcGu6x1AwQH")
 	require.NoError(t, err)
+	//height
 	blks := []*types.BlockHeader{
 		{
 			Miner:                 minerAct,
-			Height:                abi.ChainEpoch(1),
+			Height:                abi.ChainEpoch(1000),
 			ParentStateRoot:       c,
 			ParentMessageReceipts: c,
 			Messages:              c,

@@ -240,6 +240,7 @@ func StorageMiner(fc config.MinerFeeConfig) func(params StorageMinerParams) (*st
 			return nil, err
 		}
 
+
 		fps.SetWindowPoStCheckerListener(func(ctx context.Context) (chan uint64, chan func() ([]miner.SubmitWindowedPoStParams, error)) {
 			return sm.CheckWindowPoStListener(ctx)
 		})

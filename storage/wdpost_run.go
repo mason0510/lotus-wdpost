@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"fmt"
 	"time"
 
 	"github.com/filecoin-project/go-bitfield"
@@ -412,6 +413,7 @@ func (s *WindowPoStScheduler) checkNextFaults(ctx context.Context, dlIdx uint64,
 }
 
 func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *types.TipSet) ([]miner.SubmitWindowedPoStParams, error) {
+
 	ctx, span := trace.StartSpan(ctx, "storage.runPost")
 	defer span.End()
 
@@ -421,6 +423,8 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 		tipsetKey = ts.Key()
 		tipsetHeight = ts.Height()
 	}
+
+	fmt.Println("WindowPoStScheduler runPost++++++++++++++++++++",tipsetHeight,tipsetKey)
 
 	go func() {
 		// TODO: extract from runPost, run on fault cutoff boundaries
@@ -702,6 +706,8 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 		posts = append(posts, params)
 	}
 
+
+	fmt.Println("WindowPoStScheduler runPost++++++++++++++++++++partitionBatches partitions end",partitionBatches,partitions)
 	return posts, nil
 }
 

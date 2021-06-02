@@ -3,7 +3,6 @@ package cli
 import (
 	"strings"
 
-	miner2 "github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/urfave/cli/v2"
 
@@ -56,15 +55,8 @@ var GetGatewayAPI = cliutil.GetGatewayAPI
 var GetStorageMinerAPI = cliutil.GetStorageMinerAPI
 var GetWorkerAPI = cliutil.GetWorkerAPI
 
-func CheckWindowPoSt(ctx *cli.Context, deadline uint64) ([]miner2.SubmitWindowedPoStParams, error) {
-	minerApi, closer, err := GetStorageMinerAPI(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer closer()
 
-	return minerApi.CheckWindowPoSt(ctx.Context, deadline)
-}
+
 
 var CommonCommands = []*cli.Command{
 	netCmd,

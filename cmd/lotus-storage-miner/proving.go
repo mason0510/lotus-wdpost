@@ -420,6 +420,8 @@ var provingCheckProvableCmd = &cli.Command{
 
 		fullDeadlineCheck := cctx.Bool("full")
 		if fullDeadlineCheck {
+			///step1
+			log.Warnf("prepare CHECK WINDOW POST -------------------- %v", dlIdx)
 			proofs, err := sapi.CheckWindowPoSt(ctx, dlIdx)
 			if err != nil {
 				return err

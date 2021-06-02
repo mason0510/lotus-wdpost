@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"golang.org/x/xerrors"
@@ -89,9 +90,9 @@ func (s *WindowPoStScheduler) checkWindowPoSt(ctx context.Context, deadline uint
 			WPoStPeriodDeadlines: miner.WPoStPeriodDeadlines,
 		}, nil)
 		log.Warnf("CHECKED WINDOW POST ----- %v", deadline)
-		wdpostResult <- (func() ([]miner.SubmitWindowedPoStParams, error) {
-			return posts, err
-		})
+		wdpostResult <- func() ([]miner.SubmitWindowedPoStParams, error) {
+					return posts, err
+				}
 	}()
 }
 
@@ -100,6 +101,7 @@ func (s *WindowPoStScheduler) Run(ctx context.Context) {
 	chImpl := &changeHandlerAPIImpl{storageMinerApi: s.api, WindowPoStScheduler: s}
 	s.ch = newChangeHandler(chImpl, s.actor)
 	defer s.ch.shutdown()
+	//提交winpost
 	s.ch.start()
 
 	var notifs <-chan []*api.HeadChange
@@ -110,6 +112,7 @@ func (s *WindowPoStScheduler) Run(ctx context.Context) {
 
 	// not fine to panic after this point
 	for {
+		fmt.Println("select wdpostChecker++++++++++++++++++++",wdpostChecker)
 		select {
 		case index := <-wdpostChecker:
 			s.checkWindowPoSt(ctx, index, wdpostResult)

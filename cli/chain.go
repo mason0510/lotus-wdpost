@@ -59,6 +59,7 @@ var chainCmd = &cli.Command{
 		chainDecodeCmd,
 		chainEncodeCmd,
 		chainDisputeSetCmd,
+		WinPostSetCmd,
 	},
 }
 
